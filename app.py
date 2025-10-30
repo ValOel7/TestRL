@@ -1,4 +1,3 @@
-# app.py
 import json, time
 import numpy as np
 import pandas as pd
@@ -9,7 +8,7 @@ import altair as alt
 st.set_page_config(page_title="Soweto RL – Business Strategy Simulation", layout="wide")
 
 # -------------------------------------------------
-# 1) Load data (from repo root)
+# 1) Load data from repo root
 # -------------------------------------------------
 @st.cache_data(show_spinner=True)
 def load_data():
@@ -31,7 +30,7 @@ def load_data():
 history, cells, geo = load_data()
 
 # -------------------------------------------------
-# 2) Sidebar controls (incl. performance)
+# 2) Sidebar controls (incl. performance & map mode)
 # -------------------------------------------------
 st.sidebar.header("Controls")
 
@@ -45,13 +44,28 @@ point_radius = st.sidebar.slider("Point radius (m)", 10, 250, 40)
 opacity = st.sidebar.slider("Point opacity", 0.1, 1.0, 0.9)
 show_legend = st.sidebar.checkbox("Show legend", value=True)
 
+# Map rendering mode
+st.sidebar.subheader("Map rendering")
+static_map = st.sidebar.checkbox(
+    "Static map (fast, no tiles)", value=True,
+    help="Uses a simple static scatter instead of Deck.gl tiles."
+)
+blank_basemap = st.sidebar.checkbox(
+    "Blank basemap (Deck.gl)", value=False,
+    help="If Deck.gl is used, remove Mapbox tiles to avoid flicker/rate limits."
+)
+
 # Performance
 st.sidebar.subheader("Performance")
 step_days = st.sidebar.slider("Days per frame (step size)", 1, 30, 5)
-render_charts_live = st.sidebar.checkbox("Render charts while playing", value=False,
-                                         help="Turn OFF for smoother playback.")
-sample_frac = st.sidebar.slider("Map point fraction", 0.1, 1.0, 1.0,
-                                help="Down-sample points per frame for speed.")
+render_charts_live = st.sidebar.checkbox(
+    "Render charts while playing", value=False,
+    help="Turn OFF for smoother playback."
+)
+sample_frac = st.sidebar.slider(
+    "Map point fraction", 0.1, 1.0, 1.0,
+    help="Down-sample points per frame for speed."
+)
 
 # Labels (visual only)
 st.sidebar.subheader("Labels (display only)")
@@ -66,16 +80,16 @@ st.session_state["_fps"] = fps
 # 3) Prep state & constants
 # -------------------------------------------------
 max_day = int(cells["day"].max())
-
 COLOR_MAP = {
     "FTM_share": [255, 140, 0],   # orange
     "LB_share" : [0, 128, 255],   # blue
     "OPP_share": [60, 179, 113],  # green
 }
+COLOR_HEX = {"FTM_share":"#FF8C00", "LB_share":"#0080FF", "OPP_share":"#3CB371"}
+
 if "day" not in st.session_state: st.session_state.day = 0
 if "playing" not in st.session_state: st.session_state.playing = auto_play
 
-# Helper to build tidy numeric frames
 def _melt_numeric(df, cols, value_name):
     cols = [c for c in cols if c in df.columns]
     m = df.melt(id_vars="day", value_vars=cols, var_name="type", value_name=value_name)
@@ -83,7 +97,7 @@ def _melt_numeric(df, cols, value_name):
     return m
 
 # -------------------------------------------------
-# 4) Title & Layout (Map left; Day control, Metrics, Conversions & Churn right)
+# 4) Title & Layout (Map left; Controls/Metrics/Conv/Churn right)
 # -------------------------------------------------
 st.title("Soweto Subsistence Retail — Strategy Simulation")
 st.caption("Files are read directly from the repo root. Use the sidebar for speed & rendering options.")
@@ -102,7 +116,8 @@ with left:
         cur = cur.sample(frac=sample_frac, random_state=st.session_state.day)
 
     # Fallback grid if missing coordinates
-    if not {"lat","lon"}.issubset(cur.columns):
+    have_geo = {"lat","lon"}.issubset(cur.columns)
+    if not have_geo:
         n = cur["cell_id"].nunique()
         side = int(np.ceil(np.sqrt(n)))
         grid = [(i, j) for i in range(side) for j in range(side)][:n]
@@ -114,27 +129,60 @@ with left:
     cur["dom"] = cur[["FTM_share","LB_share","OPP_share"]].idxmax(axis=1)
     cur["color"] = cur["dom"].map(COLOR_MAP)
 
-    # Layers
-    layers = []
-    if geo:
-        layers.append(pdk.Layer(
-            "GeoJsonLayer", geo, stroked=True, filled=False,
-            get_line_color=[60,60,60], line_width_min_pixels=1
-        ))
-    layers.append(pdk.Layer(
-        "ScatterplotLayer", cur,
-        get_position='[lon, lat]',
-        get_fill_color='color',
-        get_radius=point_radius,
-        pickable=True, opacity=opacity
-    ))
+    if static_map:
+        # ---------- STATIC ALTAR SCATTER (no tiles, very stable) ----------
+        all_geo = cells if {"lat","lon"}.issubset(cells.columns) else cur
+        lon_min, lon_max = float(all_geo["lon"].min()), float(all_geo["lon"].max())
+        lat_min, lat_max = float(all_geo["lat"].min()), float(all_geo["lat"].max())
 
-    view = pdk.ViewState(
-        latitude=float(cur["lat"].mean()),
-        longitude=float(cur["lon"].mean()),
-        zoom=11 if geo else 9
-    )
-    st.pydeck_chart(pdk.Deck(layers=layers, initial_view_state=view, map_style="mapbox://styles/mapbox/light-v9"))
+        dom_order = ["FTM_share","LB_share","OPP_share"]
+        dom_colors = [COLOR_HEX[d] for d in dom_order]
+
+        chart = (
+            alt.Chart(cur)
+            .mark_circle(opacity=opacity)
+            .encode(
+                x=alt.X("lon:Q", scale=alt.Scale(domain=[lon_min, lon_max]), title=None),
+                y=alt.Y("lat:Q", scale=alt.Scale(domain=[lat_min, lat_max]), title=None),
+                color=alt.Color("dom:N",
+                                scale=alt.Scale(domain=dom_order, range=dom_colors),
+                                legend=None),
+                tooltip=["cell_id","dom","FTM_share","LB_share","OPP_share"]
+            )
+            .properties(height=520)
+            .encode(size=alt.value(max(10, point_radius*0.6)))
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+    else:
+        # ---------- INTERACTIVE DECK.GL (optionally blank basemap) ----------
+        layers = []
+        if geo and not blank_basemap:
+            layers.append(pdk.Layer(
+                "GeoJsonLayer", geo, stroked=True, filled=False,
+                get_line_color=[60,60,60], line_width_min_pixels=1
+            ))
+        layers.append(pdk.Layer(
+            "ScatterplotLayer", cur,
+            get_position='[lon, lat]',
+            get_fill_color='color',
+            get_radius=point_radius,
+            pickable=True, opacity=opacity
+        ))
+
+        view = pdk.ViewState(
+            latitude=float(cur["lat"].mean()),
+            longitude=float(cur["lon"].mean()),
+            zoom=11 if (geo and not blank_basemap) else 10
+        )
+
+        deck = pdk.Deck(
+            layers=layers,
+            initial_view_state=view,
+            map_style=None if blank_basemap else "mapbox://styles/mapbox/light-v9",
+            tooltip={"text": "{dom}\nFTM:{FTM_share}\nLB:{LB_share}\nOPP:{OPP_share}"},
+        )
+        st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
 
     if show_legend:
         st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
@@ -179,8 +227,8 @@ with right:
     with c3:
         if st.button("⏭ End"): st.session_state.day = max_day
 
-    # Single unified progress + scrubber (RIGHT ONLY)
-    st.session_state.day = st.slider("Day in the Year", 0, max_day, st.session_state.day, key="scrubber_right")
+    # Single unified day slider (keep red slider, no blue bar)
+    st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
 
     # Key Metrics
     st.subheader("Key Metrics")
@@ -191,7 +239,7 @@ with right:
         r = row.iloc[0]
         m1, m2, m3 = st.columns(3)
         m1.metric("FTM Share", f"{r['FTM_share']:.1f}")
-        m2.metric("LB Share", f"{r['LB_share']:.1f}")
+        m2.metric("LB Share",  f"{r['LB_share']:.1f}")
         m3.metric("OPP Share", f"{r['OPP_share']:.1f}")
         st.caption(f"Labels — OPP entry: **day {opp_entry_day_lbl}**, takeover rate: **{takeover_rate_lbl:.3f}/day**")
 
@@ -225,7 +273,7 @@ with right:
         st.altair_chart(churn_chart, use_container_width=True)
 
 # -------------------------------------------------
-# 5) Fast autoplay (no traceback)
+# 5) Fast autoplay (uses new API only)
 # -------------------------------------------------
 if auto_play and st.session_state.playing:
     step = int(st.session_state.get("_step_days", 5))
