@@ -6,7 +6,7 @@ import streamlit as st
 import pydeck as pdk
 import altair as alt
 
-st.set_page_config(page_title="Soweto RL – Business Strategy Simulation", layout="wide")
+st.set_page_config(page_title="Soweto Business Strategy Simulation", layout="wide")
 
 # -------------------------------------------------
 # 1) Load data from repo root
@@ -41,14 +41,14 @@ fps = st.sidebar.slider("Animation speed (frames/sec)", 1, 30, 10)
 loop_mode = st.sidebar.selectbox("Loop mode", ["Stop at end", "Loop"], index=0)
 
 # Map & display
-point_radius = st.sidebar.slider("Point radius (m)", 10, 250, 40)
+point_radius = st.sidebar.slider("Point radius (m)", 10, 250, 115)
 opacity = st.sidebar.slider("Point opacity", 0.1, 1.0, 0.9)
 show_legend = st.sidebar.checkbox("Show legend", value=True)
 
 # Performance
 st.sidebar.subheader("Performance")
 step_days = st.sidebar.slider("Days per frame (step size)", 1, 30, 5)
-render_charts_live = st.sidebar.checkbox("Render charts while playing", value=False,
+render_charts_live = st.sidebar.checkbox("Render charts while playing", value=True,
                                          help="Turn OFF for smoother playback.")
 sample_frac = st.sidebar.slider("Map point fraction", 0.1, 1.0, 1.0,
                                 help="Down-sample points per frame for speed.")
@@ -85,8 +85,8 @@ if "playing" not in st.session_state: st.session_state.playing = auto_play
 # -------------------------------------------------
 # 4) Layout header
 # -------------------------------------------------
-st.title("Soweto Subsistence Retail — Strategy Simulation")
-st.caption("Files are read directly from the repo root. Use the sidebar to control playback, speed and rendering.")
+st.title("Soweto Subsistence Retail Strategy Simulation")
+st.caption("The business strategy simulation is a tool to aid shop owners in Soweto, to understand which business strategy is best suited given the market insight of customers in Soweto. The market insight was obtained by using the data from "Data modelling of subsistence retail consumer purchase behavior in South Africa". Please use the sidebar to control playback, speed and rendering of the graphs.")
 
 top_col1, top_col2 = st.columns([1.4, 1.0])
 
