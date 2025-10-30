@@ -228,21 +228,19 @@ else:
         use_container_width=True
     )
 
-# -------------------------------------------------
-# 8) Fast autoplay without traceback
+# 8) Fast autoplay without traceback (new API only)
 # -------------------------------------------------
 if auto_play and st.session_state.playing:
     step = int(st.session_state.get("_step_days", 5))
     nxt = st.session_state.day + step
+
     if nxt > max_day:
         if loop_mode == "Loop":
             nxt = 0
         else:
             nxt = max_day
             st.session_state.playing = False
+
     st.session_state.day = nxt
     time.sleep(max(0.0, 1.0 / max(1, st.session_state.get("_fps", 10))))
-    try:
-        st.rerun()
-    except Exception:
-        st.experimental_rerun()
+    st.rerun()
