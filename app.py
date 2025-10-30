@@ -83,25 +83,25 @@ if "day" not in st.session_state: st.session_state.day = 0
 if "playing" not in st.session_state: st.session_state.playing = auto_play
 
 # -------------------------------------------------
-# 4) Title & two-column layout (Map left, Controls+Metrics+Trends right)
+# 4) Title & Layout (Map + Controls on right, Trends under Map)
 # -------------------------------------------------
 st.title("Soweto Subsistence Retail — Strategy Simulation")
 st.caption("Files are read directly from the repo root. Use the sidebar for speed & rendering options.")
 
-left, right = st.columns([1.8, 1.1])  # wider map on the left
+# Map + Control Columns
+left, right = st.columns([1.8, 1.1])  # Map wider, right narrower
 
 # ===================== LEFT: MARKET MAP =====================
 with left:
     st.subheader("Market Map")
 
-    # Current-day slice (uses st.session_state.day from autoplay/scrubber below)
+    # Slice for current day
     cur = cells[cells["day"] == st.session_state.day].copy()
 
-    # Optional down-sampling for speed (from sidebar)
     if sample_frac < 1.0 and len(cur) > 0:
         cur = cur.sample(frac=sample_frac, random_state=st.session_state.day)
 
-    # Fallback grid if no lat/lon
+    # Fallback grid if missing coordinates
     if not {"lat","lon"}.issubset(cur.columns):
         n = cur["cell_id"].nunique()
         side = int(np.ceil(np.sqrt(n)))
@@ -110,12 +110,12 @@ with left:
         cur["lon"] = [g[0] for g in grid]
         cur["lat"] = [g[1] for g in grid]
 
-    # Dominant owner + colors
+    # Determine dominant business type
     COLOR_MAP = {"FTM_share":[255,140,0], "LB_share":[0,128,255], "OPP_share":[60,179,113]}
     cur["dom"] = cur[["FTM_share","LB_share","OPP_share"]].idxmax(axis=1)
     cur["color"] = cur["dom"].map(COLOR_MAP)
 
-    # Layers
+    # PyDeck Layers
     layers = []
     if geo:
         layers.append(pdk.Layer(
@@ -124,57 +124,31 @@ with left:
         ))
     layers.append(pdk.Layer(
         "ScatterplotLayer", cur,
-        get_position='[lon, lat]', get_fill_color='color',
-        get_radius=point_radius, pickable=True, opacity=opacity
+        get_position='[lon, lat]',
+        get_fill_color='color',
+        get_radius=point_radius,
+        pickable=True, opacity=opacity
     ))
 
+    # View state
     view = pdk.ViewState(
         latitude=float(cur["lat"].mean()),
         longitude=float(cur["lon"].mean()),
         zoom=11 if geo else 9
     )
-    st.pydeck_chart(pdk.Deck(layers=layers, initial_view_state=view, map_style="mapbox://styles/mapbox/light-v9"))
+    st.pydeck_chart(
+        pdk.Deck(layers=layers, initial_view_state=view, map_style="mapbox://styles/mapbox/light-v9")
+    )
 
     if show_legend:
-        st.markdown("**Legend**  \n🟠 FTM  🔵 LB  🟢 OPP")
+        st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
 
-# ===================== RIGHT: CONTROLS + METRICS + TRENDS =====================
-with right:
-    st.subheader("Day Control")
-
-    # Buttons row
-    c1, c2, c3 = st.columns([1,1,1])
-    with c1:
-        if st.button("⏮ Start"): st.session_state.day = 0
-    with c2:
-        if st.button("⏯ Play/Pause"): st.session_state.playing = not st.session_state.playing
-    with c3:
-        if st.button("⏭ End"): st.session_state.day = int(cells["day"].max())
-
-    # Progress + scrub
-    max_day = int(cells["day"].max())
-    st.progress(min(st.session_state.day / max_day, 1.0))
-    st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
-
-    # Current-day metrics
-    st.subheader("Key Metrics")
-    row = history[history["day"] == st.session_state.day]
-    if row.empty:
-        st.write("No data for this day.")
-    else:
-        r = row.iloc[0]
-        m1, m2, m3 = st.columns(3)
-        m1.metric("FTM share (sum)", f"{r['FTM_share']:.1f}")
-        m2.metric("LB share (sum)",  f"{r['LB_share']:.1f}")
-        m3.metric("OPP share (sum)", f"{r['OPP_share']:.1f}")
-        st.caption(f"Labels — OPP entry: **day {opp_entry_day_lbl}**, takeover rate: **{takeover_rate_lbl:.3f}/day**")
-
-    # Trends (toggle live rendering for speed)
+    # ===================== UNDER MAP: TRENDS =====================
     st.subheader("Trends")
     if (auto_play and st.session_state.playing) and (not render_charts_live):
         st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
     else:
-        # Robust melt (handles missing/typed columns)
+        # Helper melt for robustness
         def _melt_numeric(df, cols, value_name):
             cols = [c for c in cols if c in df.columns]
             m = df.melt(id_vars="day", value_vars=cols, var_name="type", value_name=value_name)
@@ -185,6 +159,7 @@ with right:
         conv_long   = _melt_numeric(history, ["FTM_conv","LB_conv","OPP_conv"], "conversions")
         churn_long  = _melt_numeric(history, ["FTM_churn","LB_churn","OPP_churn"], "churn")
 
+        # Aggregate Share Chart
         share_chart = (
             alt.Chart(shares_long).mark_line().encode(
                 x=alt.X("day:Q", title="Day"),
@@ -192,37 +167,74 @@ with right:
                 color=alt.Color("type:N",
                     scale=alt.Scale(domain=["FTM_share","LB_share","OPP_share"],
                                     range=["#FF8C00","#0080FF","#3CB371"]),
-                    legend=alt.Legend(title="Type")
+                    legend=alt.Legend(title="Business Type")
                 ),
                 tooltip=["day","type","share_sum"]
-            ).properties(height=180)
+            ).properties(height=220, title="Aggregate Share Over Time")
         )
         st.altair_chart(share_chart, use_container_width=True)
 
-        cA, cB = st.columns(2)
-        cA.altair_chart(
+        # Conversions below
+        conv_chart = (
             alt.Chart(conv_long).mark_line().encode(
-                x="day:Q", y=alt.Y("conversions:Q", title="Conversions"),
+                x="day:Q", y=alt.Y("conversions:Q", title="Conversions per Day"),
                 color="type:N"
-            ).properties(height=160, title="Conversions per Day"),
-            use_container_width=True
+            ).properties(height=200, title="Conversions per Day")
         )
-        cB.altair_chart(
-            alt.Chart(churn_long).mark_line().encode(
-                x="day:Q", y=alt.Y("churn:Q", title="Churn"),
-                color="type:N"
-            ).properties(height=160, title="Churn per Day"),
-            use_container_width=True
-        )
+        st.altair_chart(conv_chart, use_container_width=True)
 
-    # Optional explanation block (from your sketch)
-    with st.expander("Explanation", expanded=False):
-        st.markdown(
-            "- **FTM**: Early surge; novelty & higher late churn.\n"
-            "- **LB**: Slower growth; loyalty reduces churn; vulnerable to early OPP unless loyalty built.\n"
-            "- **OPP**: Enters later; grows by takeover; sticky once captured.\n"
-            "- **Map** shows dominant owner per cell; trends show aggregate dynamics."
+        # Churn below conversions
+        churn_chart = (
+            alt.Chart(churn_long).mark_line().encode(
+                x="day:Q", y=alt.Y("churn:Q", title="Churn per Day"),
+                color="type:N"
+            ).properties(height=200, title="Churn per Day")
         )
+        st.altair_chart(churn_chart, use_container_width=True)
+
+    # Explanation (always visible)
+    st.markdown("""
+    ---
+    ### Explanation
+    **First-to-Market (FTM):** Captures market share quickly due to novelty and visibility,  
+    but faces high churn as competitors emerge.  
+
+    **Loyalty-Based (LB):** Grows slowly through customer retention and relationship marketing;  
+    lower churn, steady long-term gains.  
+
+    **Opposition (OPP):** Enters later, expands by taking over existing customers;  
+    slower initial growth but stable dominance once established.
+    """)
+
+# ===================== RIGHT: CONTROLS + METRICS =====================
+with right:
+    st.subheader("Day Control")
+    c1, c2, c3 = st.columns([1,1,1])
+    with c1:
+        if st.button("⏮ Start"): st.session_state.day = 0
+    with c2:
+        if st.button("⏯ Play/Pause"): st.session_state.playing = not st.session_state.playing
+    with c3:
+        if st.button("⏭ End"): st.session_state.day = int(cells["day"].max())
+
+    # Progress bar + scrubber
+    max_day = int(cells["day"].max())
+    st.progress(min(st.session_state.day / max_day, 1.0))
+    st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
+
+    # Key Metrics
+    st.subheader("Key Metrics")
+    row = history[history["day"] == st.session_state.day]
+    if row.empty:
+        st.write("No data for this day.")
+    else:
+        r = row.iloc[0]
+        m1, m2, m3 = st.columns(3)
+        m1.metric("FTM Share", f"{r['FTM_share']:.1f}")
+        m2.metric("LB Share", f"{r['LB_share']:.1f}")
+        m3.metric("OPP Share", f"{r['OPP_share']:.1f}")
+        st.caption(f"Labels — OPP entry: **day {opp_entry_day_lbl}**, takeover rate: **{takeover_rate_lbl:.3f}/day**")
+
 
 # 8) Fast autoplay without traceback (new API only)
 # -------------------------------------------------
