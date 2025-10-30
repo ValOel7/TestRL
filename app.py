@@ -30,7 +30,7 @@ def load_data():
 
 history, cells, geo = load_data()
 
-# ---- (NEW) Global stable center for Deck.gl so blank basemap doesn't recenter/flicker ----
+# ---- (NEW) Global stable center for .gl so blank basemap doesn't recenter/flicker ----
 if "global_center" not in st.session_state:
     df = cells.copy()
     if {"lat", "lon"}.issubset(df.columns):
@@ -192,13 +192,12 @@ with left:
         )
 
         deck = pdk.Deck(
-            layers=layers,
-            initial_view_state=view,
-            controller=False,      # no pan/zoom events while animating
-            map_style=None if blank_basemap else "mapbox://styles/mapbox/light-v9",
-            parameters={"clearColor": [0.98, 0.98, 0.98, 1.0]},  # solid bg, no flashes
-            tooltip={"text": "{dom}\nFTM:{FTM_share}\nLB:{LB_share}\nOPP:{OPP_share}"},
-        )
+    layers=layers,
+    initial_view_state=view,
+    controller=False,
+    map_style=None if blank_basemap else "mapbox://styles/mapbox/light-v9",
+    parameters={"clearColor": [0.98, 0.98, 0.98, 1.0]},
+)
         st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
 
     if show_legend:
