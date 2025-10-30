@@ -86,7 +86,7 @@ if "playing" not in st.session_state: st.session_state.playing = auto_play
 # 4) Layout header
 # -------------------------------------------------
 st.title("Soweto Subsistence Retail Strategy Simulation")
-st.caption("The business strategy simulation is a tool to aid shop owners in Soweto, to understand which business strategy is best suited given the market insight of customers in Soweto. The market insight was obtained by using the data from "Data modelling of subsistence retail consumer purchase behavior in South Africa". Please use the sidebar to control playback, speed and rendering of the graphs.")
+st.caption("The business strategy simulation is a tool to aid shop owners in Soweto, to understand which business strategy is best suited given the market insight of customers in Soweto. The market insight was obtained by using the data from *Data modelling of subsistence retail consumer purchase behavior in South Africa*. Please use the sidebar to control playback, speed and rendering of the graphs.")
 
 top_col1, top_col2 = st.columns([1.4, 1.0])
 
