@@ -180,8 +180,7 @@ with right:
         if st.button("⏭ End"): st.session_state.day = max_day
 
     # Single unified progress + scrubber (RIGHT ONLY)
-    st.progress(min(st.session_state.day / max_day, 1.0))
-    st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
+    st.session_state.day = st.slider("Day in the Year", 0, max_day, st.session_state.day, key="scrubber_right")
 
     # Key Metrics
     st.subheader("Key Metrics")
