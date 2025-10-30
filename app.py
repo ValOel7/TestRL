@@ -1,3 +1,4 @@
+# app.py
 import json, time
 import numpy as np
 import pandas as pd
@@ -29,6 +30,16 @@ def load_data():
 
 history, cells, geo = load_data()
 
+# ---- (NEW) Global stable center for Deck.gl so blank basemap doesn't recenter/flicker ----
+if "global_center" not in st.session_state:
+    df = cells.copy()
+    if {"lat", "lon"}.issubset(df.columns):
+        lat_c = float((df["lat"].min() + df["lat"].max()) / 2)
+        lon_c = float((df["lon"].min() + df["lon"].max()) / 2)
+    else:
+        lat_c, lon_c = 0.0, 0.0  # fallback if no geos
+    st.session_state["global_center"] = (lat_c, lon_c)
+
 # -------------------------------------------------
 # 2) Sidebar controls (incl. performance & map mode)
 # -------------------------------------------------
@@ -48,11 +59,11 @@ show_legend = st.sidebar.checkbox("Show legend", value=True)
 st.sidebar.subheader("Map rendering")
 static_map = st.sidebar.checkbox(
     "Static map (fast, no tiles)", value=True,
-    help="Uses a simple static scatter instead of Deck.gl tiles."
+    help="Plain static scatter (Altair). Very stable and fast."
 )
 blank_basemap = st.sidebar.checkbox(
     "Blank basemap (Deck.gl)", value=False,
-    help="If Deck.gl is used, remove Mapbox tiles to avoid flicker/rate limits."
+    help="For Deck.gl mode, render without Mapbox tiles to avoid rate-limit flicker."
 )
 
 # Performance
@@ -60,7 +71,7 @@ st.sidebar.subheader("Performance")
 step_days = st.sidebar.slider("Days per frame (step size)", 1, 30, 5)
 render_charts_live = st.sidebar.checkbox(
     "Render charts while playing", value=False,
-    help="Turn OFF for smoother playback."
+    help="Turn OFF for smoother playback during animation."
 )
 sample_frac = st.sidebar.slider(
     "Map point fraction", 0.1, 1.0, 1.0,
@@ -155,31 +166,37 @@ with left:
         st.altair_chart(chart, use_container_width=True)
 
     else:
-        # ---------- INTERACTIVE DECK.GL (optionally blank basemap) ----------
+        # ---------- INTERACTIVE DECK.GL (stabilized blank basemap) ----------
+        lat_c, lon_c = st.session_state["global_center"]
+
         layers = []
-        if geo and not blank_basemap:
+        if geo is not None:
             layers.append(pdk.Layer(
                 "GeoJsonLayer", geo, stroked=True, filled=False,
-                get_line_color=[60,60,60], line_width_min_pixels=1
+                get_line_color=[80, 80, 80], line_width_min_pixels=1,
+                pickable=False
             ))
+
         layers.append(pdk.Layer(
             "ScatterplotLayer", cur,
             get_position='[lon, lat]',
             get_fill_color='color',
             get_radius=point_radius,
-            pickable=True, opacity=opacity
+            pickable=False,        # reduce GPU work per frame
+            opacity=opacity
         ))
 
         view = pdk.ViewState(
-            latitude=float(cur["lat"].mean()),
-            longitude=float(cur["lon"].mean()),
-            zoom=11 if (geo and not blank_basemap) else 10
+            latitude=lat_c, longitude=lon_c,
+            zoom=11, bearing=0, pitch=0
         )
 
         deck = pdk.Deck(
             layers=layers,
             initial_view_state=view,
+            controller=False,      # no pan/zoom events while animating
             map_style=None if blank_basemap else "mapbox://styles/mapbox/light-v9",
+            parameters={"clearColor": [0.98, 0.98, 0.98, 1.0]},  # solid bg, no flashes
             tooltip={"text": "{dom}\nFTM:{FTM_share}\nLB:{LB_share}\nOPP:{OPP_share}"},
         )
         st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
@@ -227,7 +244,7 @@ with right:
     with c3:
         if st.button("⏭ End"): st.session_state.day = max_day
 
-    # Single unified day slider (keep red slider, no blue bar)
+    # Single unified day slider (keep red slider, no progress bar)
     st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
 
     # Key Metrics
