@@ -85,6 +85,13 @@ if "playing" not in st.session_state: st.session_state.playing = auto_play
 # -------------------------------------------------
 # 4) Title & Layout (Map + Controls on right, Trends under Map)
 # -------------------------------------------------
+# ---- Helper to tidy numeric melt ----
+def _melt_numeric(df, cols, value_name):
+    cols = [c for c in cols if c in df.columns]
+    m = df.melt(id_vars="day", value_vars=cols, var_name="type", value_name=value_name)
+    m[value_name] = pd.to_numeric(m[value_name], errors="coerce").fillna(0.0)
+    return m
+
 st.title("Soweto Subsistence Retail — Strategy Simulation")
 st.caption("Files are read directly from the repo root. Use the sidebar for speed & rendering options.")
 
@@ -144,67 +151,26 @@ with left:
         st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
 
     # ===================== UNDER MAP: TRENDS =====================
-    st.subheader("Trends")
-    if (auto_play and st.session_state.playing) and (not render_charts_live):
-        st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
-    else:
-        # Helper melt for robustness
-        def _melt_numeric(df, cols, value_name):
-            cols = [c for c in cols if c in df.columns]
-            m = df.melt(id_vars="day", value_vars=cols, var_name="type", value_name=value_name)
-            m[value_name] = pd.to_numeric(m[value_name], errors="coerce").fillna(0.0)
-            return m
+# ----- LEFT: (optional) Aggregate Share only -----
+st.subheader("Aggregate Share Over Time")
+if (auto_play and st.session_state.playing) and (not render_charts_live):
+    st.info("Charts paused for speed. Uncheck “Render charts while playing” to show this live.")
+else:
+    shares_long = _melt_numeric(history, ["FTM_share","LB_share","OPP_share"], "share_sum")
+    share_chart = (
+        alt.Chart(shares_long).mark_line().encode(
+            x=alt.X("day:Q", title="Day"),
+            y=alt.Y("share_sum:Q", title="Aggregate share"),
+            color=alt.Color("type:N",
+                scale=alt.Scale(domain=["FTM_share","LB_share","OPP_share"],
+                                range=["#FF8C00","#0080FF","#3CB371"]),
+                legend=alt.Legend(title="Type")
+            ),
+            tooltip=["day","type","share_sum"]
+        ).properties(height=220)
+    )
+    st.altair_chart(share_chart, use_container_width=True)
 
-        shares_long = _melt_numeric(history, ["FTM_share","LB_share","OPP_share"], "share_sum")
-        conv_long   = _melt_numeric(history, ["FTM_conv","LB_conv","OPP_conv"], "conversions")
-        churn_long  = _melt_numeric(history, ["FTM_churn","LB_churn","OPP_churn"], "churn")
-
-        # Aggregate Share Chart
-        share_chart = (
-            alt.Chart(shares_long).mark_line().encode(
-                x=alt.X("day:Q", title="Day"),
-                y=alt.Y("share_sum:Q", title="Aggregate share"),
-                color=alt.Color("type:N",
-                    scale=alt.Scale(domain=["FTM_share","LB_share","OPP_share"],
-                                    range=["#FF8C00","#0080FF","#3CB371"]),
-                    legend=alt.Legend(title="Business Type")
-                ),
-                tooltip=["day","type","share_sum"]
-            ).properties(height=220, title="Aggregate Share Over Time")
-        )
-        st.altair_chart(share_chart, use_container_width=True)
-
-        # Conversions below
-        conv_chart = (
-            alt.Chart(conv_long).mark_line().encode(
-                x="day:Q", y=alt.Y("conversions:Q", title="Conversions per Day"),
-                color="type:N"
-            ).properties(height=200, title="Conversions per Day")
-        )
-        st.altair_chart(conv_chart, use_container_width=True)
-
-        # Churn below conversions
-        churn_chart = (
-            alt.Chart(churn_long).mark_line().encode(
-                x="day:Q", y=alt.Y("churn:Q", title="Churn per Day"),
-                color="type:N"
-            ).properties(height=200, title="Churn per Day")
-        )
-        st.altair_chart(churn_chart, use_container_width=True)
-
-    # Explanation (always visible)
-    st.markdown("""
-    ---
-    ### Explanation
-    **First-to-Market (FTM):** Captures market share quickly due to novelty and visibility,  
-    but faces high churn as competitors emerge.  
-
-    **Loyalty-Based (LB):** Grows slowly through customer retention and relationship marketing;  
-    lower churn, steady long-term gains.  
-
-    **Opposition (OPP):** Enters later, expands by taking over existing customers;  
-    slower initial growth but stable dominance once established.
-    """)
 
 # ===================== RIGHT: CONTROLS + METRICS =====================
 with right:
@@ -234,6 +200,34 @@ with right:
         m2.metric("LB Share", f"{r['LB_share']:.1f}")
         m3.metric("OPP Share", f"{r['OPP_share']:.1f}")
         st.caption(f"Labels — OPP entry: **day {opp_entry_day_lbl}**, takeover rate: **{takeover_rate_lbl:.3f}/day**")
+# ----- RIGHT: Conversions & Churn (stacked) -----
+st.subheader("Conversions per Day")
+if (auto_play and st.session_state.playing) and (not render_charts_live):
+    st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
+else:
+    conv_long = _melt_numeric(history, ["FTM_conv","LB_conv","OPP_conv"], "conversions")
+    conv_chart = (
+        alt.Chart(conv_long).mark_line().encode(
+            x=alt.X("day:Q", title="Day"),
+            y=alt.Y("conversions:Q", title="Conversions per Day"),
+            color=alt.Color("type:N", legend=alt.Legend(title="Type"))
+        ).properties(height=200)
+    )
+    st.altair_chart(conv_chart, use_container_width=True)
+
+st.subheader("Churn per Day")
+if (auto_play and st.session_state.playing) and (not render_charts_live):
+    st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
+else:
+    churn_long = _melt_numeric(history, ["FTM_churn","LB_churn","OPP_churn"], "churn")
+    churn_chart = (
+        alt.Chart(churn_long).mark_line().encode(
+            x=alt.X("day:Q", title="Day"),
+            y=alt.Y("churn:Q", title="Churn per Day"),
+            color=alt.Color("type:N", legend=alt.Legend(title="Type"))
+        ).properties(height=200)
+    )
+    st.altair_chart(churn_chart, use_container_width=True)
 
 
 # 8) Fast autoplay without traceback (new API only)
