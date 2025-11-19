@@ -14,7 +14,7 @@ st.set_page_config(page_title="Soweto RL – Business Strategy Simulation", layo
 @st.cache_data(show_spinner=True)
 def load_data():
     try:
-        hist = pd.read_csv("simulation_history.csv")
+        hist = pd.read_csv("simulation_history (2).csv")
         cells = pd.read_csv("cell_day_marketshare (1).csv")
     except Exception as e:
         st.error(f"Could not read CSVs from repo root. {e}")
