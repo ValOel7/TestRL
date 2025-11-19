@@ -59,14 +59,9 @@ show_legend = st.sidebar.checkbox("Show legend", value=True)
 # Map rendering mode
 st.sidebar.subheader("Map rendering")
 static_map = st.sidebar.checkbox(
-    "Static map (fast, no tiles)", value=True,
-    help="Plain static scatter (Altair). Very stable and fast."
+    "Static map (recommended)", value=True,
+    help="Plain static scatter using Altair. Fast and stable."
 )
-blank_basemap = st.sidebar.checkbox(
-    "Blank basemap (Deck.gl)", value=False,
-    help="For Deck.gl mode, render without Mapbox tiles to avoid rate-limit flicker."
-)
-
 # Performance
 st.sidebar.subheader("Performance")
 step_days = st.sidebar.slider("Days per frame (step size)", 1, 30, 5)
@@ -229,14 +224,15 @@ with left:
 
         view = pdk.ViewState(latitude=lat_c, longitude=lon_c, zoom=11, bearing=0, pitch=0)
 
+
+        st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
         deck = pdk.Deck(
             layers=layers,
             initial_view_state=view,
             controller=False,
-            map_style=None if blank_basemap else "mapbox://styles/mapbox/light-v9",
-            parameters={"clearColor": [0.98, 0.98, 0.98, 1.0]},
-        )
-        st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
+            map_style="mapbox://styles/mapbox/light-v9",
+)
+
 
     if show_legend:
         st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
