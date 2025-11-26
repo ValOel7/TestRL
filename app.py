@@ -120,7 +120,7 @@ def get_stage_idx(day: int) -> int:
 # -------------------------------------------------
 # 4) Title & Layout
 # -------------------------------------------------
-st.title("Soweto Subsistence Retail — Strategy Simulation")
+st.title("Soweto RL Business Strategy Simulation using Reinforcement Learning")
 st.caption(
     "Files are read directly from the simulation that was done in Google Colab. "
     "Use the sidebar for speed & rendering options."
