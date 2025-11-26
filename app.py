@@ -7,7 +7,7 @@ import streamlit as st
 import altair as alt
 
 st.set_page_config(
-    page_title="Soweto RL – Business Strategy Simulation",
+    page_title="Soweto RL Business Strategy Simulation using Reinforcement Learning",
     layout="wide"
 )
 
