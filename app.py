@@ -1,12 +1,14 @@
 # app.py
-import json, time
+import time
 import numpy as np
 import pandas as pd
 import streamlit as st
-import pydeck as pdk
 import altair as alt
 
-st.set_page_config(page_title="Soweto RL – Business Strategy Simulation", layout="wide")
+st.set_page_config(
+    page_title="Soweto RL – Business Strategy Simulation",
+    layout="wide"
+)
 
 # -------------------------------------------------
 # 1) Load data from repo root
@@ -19,27 +21,9 @@ def load_data():
     except Exception as e:
         st.error(f"Could not read CSVs from repo root. {e}")
         st.stop()
+    return hist, cells
 
-    geo = None
-    try:
-        with open("soweto_boundary.geojson", "r", encoding="utf-8") as f:
-            geo = json.load(f)
-    except Exception:
-        geo = None  # optional
-    return hist, cells, geo
-
-
-history, cells, geo = load_data()
-
-# ---- Stable global center for Deck.gl ----
-if "global_center" not in st.session_state:
-    df = cells.copy()
-    if {"lat", "lon"}.issubset(df.columns):
-        lat_c = float((df["lat"].min() + df["lat"].max()) / 2)
-        lon_c = float((df["lon"].min() + df["lon"].max()) / 2)
-    else:
-        lat_c, lon_c = 0.0, 0.0
-    st.session_state["global_center"] = (lat_c, lon_c)
+history, cells = load_data()
 
 # -------------------------------------------------
 # 2) Sidebar controls
@@ -52,7 +36,7 @@ fps = st.sidebar.slider("Animation speed (frames/sec)", 1, 30, 10)
 loop_mode = st.sidebar.selectbox("Loop mode", ["Stop at end", "Loop"], index=0)
 
 # Map & display
-point_radius = st.sidebar.slider("Point radius (m)", 10, 250, 40)
+point_radius = st.sidebar.slider("Point radius (pixels)", 5, 60, 18)
 opacity = st.sidebar.slider("Point opacity", 0.1, 1.0, 0.9)
 show_legend = st.sidebar.checkbox("Show legend", value=True)
 
@@ -77,7 +61,9 @@ show_lifecycle = st.sidebar.checkbox(
 # Labels (visual only)
 st.sidebar.subheader("Labels (display only)")
 opp_entry_day_lbl = st.sidebar.number_input("OPP entry day (label)", 0, 365, 90)
-takeover_rate_lbl = st.sidebar.number_input("Takeover rate (/day, label)", 0.0, 0.2, 0.02, 0.005)
+takeover_rate_lbl = st.sidebar.number_input(
+    "Takeover rate (/day, label)", 0.0, 0.2, 0.02, 0.005
+)
 
 # Persist for autoplay
 st.session_state["_step_days"] = step_days
@@ -87,12 +73,11 @@ st.session_state["_fps"] = fps
 # 3) Prep state, constants & helper functions
 # -------------------------------------------------
 max_day = int(cells["day"].max())
-COLOR_MAP = {
-    "FTM_share": [255, 140, 0],   # orange
-    "LB_share" : [0, 128, 255],   # blue
-    "OPP_share": [60, 179, 113],  # green
+COLOR_HEX = {
+    "FTM_share": "#FF8C00",   # orange
+    "LB_share":  "#0080FF",   # blue
+    "OPP_share": "#3CB371",   # green
 }
-COLOR_HEX = {"FTM_share":"#FF8C00", "LB_share":"#0080FF", "OPP_share":"#3CB371"}
 
 if "day" not in st.session_state:
     st.session_state.day = 0
@@ -102,7 +87,12 @@ if "playing" not in st.session_state:
 
 def _melt_numeric(df, cols, value_name):
     cols = [c for c in cols if c in df.columns]
-    m = df.melt(id_vars="day", value_vars=cols, var_name="type", value_name=value_name)
+    m = df.melt(
+        id_vars="day",
+        value_vars=cols,
+        var_name="type",
+        value_name=value_name
+    )
     m[value_name] = pd.to_numeric(m[value_name], errors="coerce").fillna(0.0)
     return m
 
@@ -130,7 +120,10 @@ def get_stage_idx(day: int) -> int:
 # 4) Title & Layout
 # -------------------------------------------------
 st.title("Soweto Subsistence Retail — Strategy Simulation")
-st.caption("Files are read directly from the repo root. Use the sidebar for speed & rendering options.")
+st.caption(
+    "Files are read directly from the repo root. "
+    "Use the sidebar for speed & rendering options."
+)
 
 left, right = st.columns([1.8, 1.1])  # Map wider
 
@@ -155,55 +148,35 @@ with left:
         cur["lon"] = [g[0] for g in grid]
         cur["lat"] = [g[1] for g in grid]
 
-    # Dominant owner & color
+    # Dominant owner
     cur["dom"] = cur[["FTM_share", "LB_share", "OPP_share"]].idxmax(axis=1)
-    cur["color"] = cur["dom"].map(COLOR_MAP)
 
-    # ---------- SINGLE INTERACTIVE DECK.GL MAP ----------
-    lat_c, lon_c = st.session_state["global_center"]
+    # Determine plotting bounds from all cells
+    all_geo = cells if {"lat", "lon"}.issubset(cells.columns) else cur
+    lon_min, lon_max = float(all_geo["lon"].min()), float(all_geo["lon"].max())
+    lat_min, lat_max = float(all_geo["lat"].min()), float(all_geo["lat"].max())
 
-    layers = []
-    if geo is not None:
-        layers.append(
-            pdk.Layer(
-                "GeoJsonLayer",
-                geo,
-                stroked=True,
-                filled=False,
-                get_line_color=[80, 80, 80],
-                line_width_min_pixels=1,
-                pickable=False,
-            )
+    dom_order = ["FTM_share", "LB_share", "OPP_share"]
+    dom_colors = [COLOR_HEX[d] for d in dom_order]
+
+    chart = (
+        alt.Chart(cur)
+        .mark_circle(opacity=opacity)
+        .encode(
+            x=alt.X("lon:Q", scale=alt.Scale(domain=[lon_min, lon_max]), title=None),
+            y=alt.Y("lat:Q", scale=alt.Scale(domain=[lat_min, lat_max]), title=None),
+            color=alt.Color(
+                "dom:N",
+                scale=alt.Scale(domain=dom_order, range=dom_colors),
+                legend=None,
+            ),
+            tooltip=["cell_id", "dom", "FTM_share", "LB_share", "OPP_share"],
         )
-
-    layers.append(
-        pdk.Layer(
-            "ScatterplotLayer",
-            cur,
-            get_position="[lon, lat]",
-            get_fill_color="color",
-            get_radius=point_radius,
-            pickable=False,
-            opacity=opacity,
-        )
+        .properties(height=520)
+        .encode(size=alt.value(max(5, point_radius)))
     )
 
-    view = pdk.ViewState(
-        latitude=lat_c,
-        longitude=lon_c,
-        zoom=11,
-        bearing=0,
-        pitch=0,
-    )
-
-    deck = pdk.Deck(
-        layers=layers,
-        initial_view_state=view,
-        controller=False,
-        map_style="mapbox://styles/mapbox/light-v9",
-    )
-
-    st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
+    st.altair_chart(chart, use_container_width=True)
 
     if show_legend:
         st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
@@ -211,9 +184,14 @@ with left:
     # ---------- Aggregate Share with optional life-cycle overlay ----------
     st.subheader("Aggregate Share Over Time")
     if (auto_play and st.session_state.playing) and (not render_charts_live):
-        st.info("Charts paused for speed. Uncheck “Render charts while playing” to show this live.")
+        st.info(
+            "Charts paused for speed. "
+            "Uncheck “Render charts while playing” to show this live."
+        )
     else:
-        shares_long = _melt_numeric(history, ["FTM_share", "LB_share", "OPP_share"], "share_sum")
+        shares_long = _melt_numeric(
+            history, ["FTM_share", "LB_share", "OPP_share"], "share_sum"
+        )
 
         base_chart = (
             alt.Chart(shares_long)
@@ -267,7 +245,8 @@ with left:
             st.altair_chart(combined, use_container_width=True)
             st.caption(
                 "Dashed black line shows a conceptual business life cycle. "
-                "Dotted vertical rules mark stage boundaries: Launch, Growth, Shake-out, Maturity, Decline."
+                "Dotted vertical rules mark stage boundaries: "
+                "Launch, Growth, Shake-out, Maturity, Decline."
             )
         else:
             st.altair_chart(base_chart, use_container_width=True)
@@ -298,7 +277,9 @@ with right:
             st.session_state.day = max_day
 
     # Single unified day slider
-    st.session_state.day = st.slider("Scrub day", 0, max_day, st.session_state.day, key="scrubber_right")
+    st.session_state.day = st.slider(
+        "Scrub day", 0, max_day, st.session_state.day, key="scrubber_right"
+    )
 
     # Key Metrics
     st.subheader("Key Metrics")
@@ -319,9 +300,14 @@ with right:
     # Conversions
     st.subheader("Conversions per Day")
     if (auto_play and st.session_state.playing) and (not render_charts_live):
-        st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
+        st.info(
+            "Charts paused for speed. "
+            "Uncheck “Render charts while playing” in the sidebar to show them live."
+        )
     else:
-        conv_long = _melt_numeric(history, ["FTM_conv", "LB_conv", "OPP_conv"], "conversions")
+        conv_long = _melt_numeric(
+            history, ["FTM_conv", "LB_conv", "OPP_conv"], "conversions"
+        )
         conv_chart = (
             alt.Chart(conv_long)
             .mark_line()
@@ -337,9 +323,14 @@ with right:
     # Churn
     st.subheader("Churn per Day")
     if (auto_play and st.session_state.playing) and (not render_charts_live):
-        st.info("Charts paused for speed. Uncheck “Render charts while playing” in the sidebar to show them live.")
+        st.info(
+            "Charts paused for speed. "
+            "Uncheck “Render charts while playing” in the sidebar to show them live."
+        )
     else:
-        churn_long = _melt_numeric(history, ["FTM_churn", "LB_churn", "OPP_churn"], "churn")
+        churn_long = _melt_numeric(
+            history, ["FTM_churn", "LB_churn", "OPP_churn"], "churn"
+        )
         churn_chart = (
             alt.Chart(churn_long)
             .mark_line()
