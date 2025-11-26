@@ -122,7 +122,7 @@ def get_stage_idx(day: int) -> int:
 # -------------------------------------------------
 st.title("Soweto Subsistence Retail — Strategy Simulation")
 st.caption(
-    "Files are read directly from the repo root. "
+    "Files are read directly from the simulation that was done in Google Colab. "
     "Use the sidebar for speed & rendering options."
 )
 
