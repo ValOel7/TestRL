@@ -56,12 +56,6 @@ point_radius = st.sidebar.slider("Point radius (m)", 10, 250, 40)
 opacity = st.sidebar.slider("Point opacity", 0.1, 1.0, 0.9)
 show_legend = st.sidebar.checkbox("Show legend", value=True)
 
-# Map rendering mode
-st.sidebar.subheader("Map rendering")
-static_map = st.sidebar.checkbox(
-    "Static map (recommended)", value=True,
-    help="Plain static scatter using Altair. Fast and stable."
-)
 # Performance
 st.sidebar.subheader("Performance")
 step_days = st.sidebar.slider("Days per frame (step size)", 1, 30, 5)
@@ -165,74 +159,51 @@ with left:
     cur["dom"] = cur[["FTM_share", "LB_share", "OPP_share"]].idxmax(axis=1)
     cur["color"] = cur["dom"].map(COLOR_MAP)
 
-    if static_map:
-        # ---------- STATIC ALTAIR SCATTER ----------
-        all_geo = cells if {"lat", "lon"}.issubset(cells.columns) else cur
-        lon_min, lon_max = float(all_geo["lon"].min()), float(all_geo["lon"].max())
-        lat_min, lat_max = float(all_geo["lat"].min()), float(all_geo["lat"].max())
+    # ---------- SINGLE INTERACTIVE DECK.GL MAP ----------
+    lat_c, lon_c = st.session_state["global_center"]
 
-        dom_order = ["FTM_share", "LB_share", "OPP_share"]
-        dom_colors = [COLOR_HEX[d] for d in dom_order]
-
-        chart = (
-            alt.Chart(cur)
-            .mark_circle(opacity=opacity)
-            .encode(
-                x=alt.X("lon:Q", scale=alt.Scale(domain=[lon_min, lon_max]), title=None),
-                y=alt.Y("lat:Q", scale=alt.Scale(domain=[lat_min, lat_max]), title=None),
-                color=alt.Color(
-                    "dom:N",
-                    scale=alt.Scale(domain=dom_order, range=dom_colors),
-                    legend=None,
-                ),
-                tooltip=["cell_id", "dom", "FTM_share", "LB_share", "OPP_share"],
-            )
-            .properties(height=520)
-            .encode(size=alt.value(max(10, point_radius * 0.6)))
-        )
-        st.altair_chart(chart, use_container_width=True)
-
-    else:
-        # ---------- INTERACTIVE DECK.GL ----------
-        lat_c, lon_c = st.session_state["global_center"]
-
-        layers = []
-        if geo is not None:
-            layers.append(
-                pdk.Layer(
-                    "GeoJsonLayer",
-                    geo,
-                    stroked=True,
-                    filled=False,
-                    get_line_color=[80, 80, 80],
-                    line_width_min_pixels=1,
-                    pickable=False,
-                )
-            )
-
+    layers = []
+    if geo is not None:
         layers.append(
             pdk.Layer(
-                "ScatterplotLayer",
-                cur,
-                get_position="[lon, lat]",
-                get_fill_color="color",
-                get_radius=point_radius,
+                "GeoJsonLayer",
+                geo,
+                stroked=True,
+                filled=False,
+                get_line_color=[80, 80, 80],
+                line_width_min_pixels=1,
                 pickable=False,
-                opacity=opacity,
             )
         )
 
-        view = pdk.ViewState(latitude=lat_c, longitude=lon_c, zoom=11, bearing=0, pitch=0)
+    layers.append(
+        pdk.Layer(
+            "ScatterplotLayer",
+            cur,
+            get_position="[lon, lat]",
+            get_fill_color="color",
+            get_radius=point_radius,
+            pickable=False,
+            opacity=opacity,
+        )
+    )
 
+    view = pdk.ViewState(
+        latitude=lat_c,
+        longitude=lon_c,
+        zoom=11,
+        bearing=0,
+        pitch=0,
+    )
 
-        st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
-        deck = pdk.Deck(
-            layers=layers,
-            initial_view_state=view,
-            controller=False,
-            map_style="mapbox://styles/mapbox/light-v9",
-)
+    deck = pdk.Deck(
+        layers=layers,
+        initial_view_state=view,
+        controller=False,
+        map_style="mapbox://styles/mapbox/light-v9",
+    )
 
+    st.pydeck_chart(deck, use_container_width=True, height=540, key="deckmap")
 
     if show_legend:
         st.markdown("**Legend:** 🟠 FTM  🔵 LB  🟢 OPP")
