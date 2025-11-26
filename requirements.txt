@@ -3,3 +3,6 @@ pandas
 numpy
 pydeck
 altair
+geopandas
+shapely
+scikit-learn
