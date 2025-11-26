@@ -13,7 +13,7 @@ from sklearn.preprocessing import MinMaxScaler
 # -------------------------------------------------
 # CONFIG – change these names to your actual files
 # -------------------------------------------------
-RAW_DATA_FILE = "soweto_retail.csv"         # <-- your raw cleaned dataset
+RAW_DATA_FILE = "Purchase_Int_FE (1).csv"         # <-- your raw cleaned dataset
 BOUNDARY_FILE = "soweto_boundary.geojson"  # geojson you already have
 
 st.set_page_config(page_title="Soweto RL – Business Strategy Simulation",
